@@ -2,7 +2,7 @@
 TWEET SENTIMENT ANALYTICS DASHBOARD
 Complete Phases 1-5: Basic App → TextBlob → VADER → pandas/numpy → Visualizations
 Deployment-ready for Streamlit Cloud
-FIXED: Navigation, Quick Examples, and All Features Working
+FIXED: Data type errors and navigation issues
 """
 
 import streamlit as st
@@ -428,6 +428,29 @@ def get_sentiment_style(sentiment: str) -> str:
 # DATA ANALYSIS FUNCTIONS - PHASE 4
 # ============================================
 
+def convert_to_numeric(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert numeric columns to proper numeric types"""
+    df = df.copy()
+    
+    # Define numeric columns
+    numeric_cols = [
+        'textblob_score', 'textblob_subjectivity',
+        'vader_score', 'vader_positive', 'vader_negative', 'vader_neutral',
+        'word_count', 'char_count', 'analysis_time'
+    ]
+    
+    # Convert each numeric column
+    for col in numeric_cols:
+        if col in df.columns:
+            # Try to convert to numeric, coerce errors to NaN
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Ensure ID is integer
+    if 'id' in df.columns:
+        df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
+    
+    return df
+
 def calculate_advanced_metrics(df: pd.DataFrame) -> Dict[str, Any]:
     """
     Calculate advanced analytics using pandas and numpy
@@ -436,38 +459,64 @@ def calculate_advanced_metrics(df: pd.DataFrame) -> Dict[str, Any]:
     if df.empty:
         return {}
     
+    # Convert to numeric first
+    df_numeric = convert_to_numeric(df)
+    
     metrics = {}
     
     # Basic counts
-    metrics['total_analyses'] = len(df)
+    metrics['total_analyses'] = len(df_numeric)
     
     # TextBlob metrics
-    if 'textblob_score' in df.columns:
-        scores = df['textblob_score'].astype(float).values
+    if 'textblob_score' in df_numeric.columns:
+        # Remove NaN values
+        scores = df_numeric['textblob_score'].dropna().astype(float).values
         
-        metrics.update({
-            'tb_mean': float(np.mean(scores)),
-            'tb_median': float(np.median(scores)),
-            'tb_std': float(np.std(scores)),
-            'tb_min': float(np.min(scores)),
-            'tb_max': float(np.max(scores)),
-            'tb_range': float(np.ptp(scores)),
-            'tb_q25': float(np.percentile(scores, 25)),
-            'tb_q75': float(np.percentile(scores, 75)),
-            'tb_iqr': float(np.percentile(scores, 75) - np.percentile(scores, 25)),
-            'tb_skew': float(pd.Series(scores).skew()),
-        })
+        if len(scores) > 0:
+            metrics.update({
+                'tb_mean': float(np.mean(scores)),
+                'tb_median': float(np.median(scores)),
+                'tb_std': float(np.std(scores)),
+                'tb_min': float(np.min(scores)),
+                'tb_max': float(np.max(scores)),
+                'tb_range': float(np.ptp(scores)),
+                'tb_q25': float(np.percentile(scores, 25)),
+                'tb_q75': float(np.percentile(scores, 75)),
+                'tb_iqr': float(np.percentile(scores, 75) - np.percentile(scores, 25)),
+                'tb_skew': float(pd.Series(scores).skew()),
+            })
+        else:
+            metrics.update({
+                'tb_mean': 0.0,
+                'tb_median': 0.0,
+                'tb_std': 0.0,
+                'tb_min': 0.0,
+                'tb_max': 0.0,
+                'tb_range': 0.0,
+                'tb_q25': 0.0,
+                'tb_q75': 0.0,
+                'tb_iqr': 0.0,
+                'tb_skew': 0.0,
+            })
     
     # VADER metrics
-    if 'vader_score' in df.columns:
-        vader_scores = df['vader_score'].astype(float).values
+    if 'vader_score' in df_numeric.columns:
+        vader_scores = df_numeric['vader_score'].dropna().astype(float).values
         
-        metrics.update({
-            'vader_mean': float(np.mean(vader_scores)),
-            'vader_std': float(np.std(vader_scores)),
-            'vader_min': float(np.min(vader_scores)),
-            'vader_max': float(np.max(vader_scores)),
-        })
+        if len(vader_scores) > 0:
+            metrics.update({
+                'vader_mean': float(np.mean(vader_scores)),
+                'vader_std': float(np.std(vader_scores)),
+                'vader_min': float(np.min(vader_scores)),
+                'vader_max': float(np.max(vader_scores)),
+            })
+        else:
+            metrics.update({
+                'vader_mean': 0.0,
+                'vader_std': 0.0,
+                'vader_min': 0.0,
+                'vader_max': 0.0,
+            })
     
     # Sentiment distribution
     if 'textblob_sentiment' in df.columns:
@@ -478,38 +527,64 @@ def calculate_advanced_metrics(df: pd.DataFrame) -> Dict[str, Any]:
             metrics[f'tb_{sentiment}_percent'] = float((count / len(df)) * 100) if len(df) > 0 else 0.0
     
     # Text statistics
-    if 'word_count' in df.columns:
-        metrics.update({
-            'avg_word_count': float(df['word_count'].mean()),
-            'total_words': int(df['word_count'].sum()),
-            'max_words': int(df['word_count'].max()),
-            'min_words': int(df['word_count'].min()),
-        })
+    if 'word_count' in df_numeric.columns:
+        word_counts = df_numeric['word_count'].dropna().astype(float).values
+        
+        if len(word_counts) > 0:
+            metrics.update({
+                'avg_word_count': float(np.mean(word_counts)),
+                'total_words': int(np.sum(word_counts)),
+                'max_words': int(np.max(word_counts)),
+                'min_words': int(np.min(word_counts)),
+            })
+        else:
+            metrics.update({
+                'avg_word_count': 0.0,
+                'total_words': 0,
+                'max_words': 0,
+                'min_words': 0,
+            })
     
     # Correlation between TextBlob and VADER
-    if 'textblob_score' in df.columns and 'vader_score' in df.columns:
-        if len(df) > 1:
-            correlation = np.corrcoef(df['textblob_score'], df['vader_score'])[0, 1]
-            metrics['tb_vader_correlation'] = float(correlation)
+    if 'textblob_score' in df_numeric.columns and 'vader_score' in df_numeric.columns:
+        tb_scores = df_numeric['textblob_score'].dropna().astype(float).values
+        vader_scores = df_numeric['vader_score'].dropna().astype(float).values
+        
+        if len(tb_scores) > 1 and len(vader_scores) > 1:
+            # Ensure same length
+            min_len = min(len(tb_scores), len(vader_scores))
+            if min_len > 1:
+                correlation = np.corrcoef(tb_scores[:min_len], vader_scores[:min_len])[0, 1]
+                metrics['tb_vader_correlation'] = float(correlation)
     
     # Agreement rate
     if 'textblob_sentiment' in df.columns and 'vader_sentiment' in df.columns:
-        agreement = (df['textblob_sentiment'] == df['vader_sentiment']).mean()
-        metrics['agreement_rate'] = float(agreement * 100)
+        # Filter out N/A values
+        valid_mask = (df['textblob_sentiment'] != 'N/A') & (df['vader_sentiment'] != 'N/A')
+        if valid_mask.any():
+            valid_df = df[valid_mask]
+            agreement = (valid_df['textblob_sentiment'] == valid_df['vader_sentiment']).mean()
+            metrics['agreement_rate'] = float(agreement * 100)
     
     return metrics
 
 def generate_correlation_matrix(df: pd.DataFrame) -> pd.DataFrame:
     """Generate correlation matrix for numeric columns"""
+    # Convert to numeric first
+    df_numeric = convert_to_numeric(df)
+    
     numeric_cols = ['textblob_score', 'vader_score', 'word_count', 'textblob_subjectivity']
-    available_cols = [col for col in numeric_cols if col in df.columns]
+    available_cols = [col for col in numeric_cols if col in df_numeric.columns]
     
     if len(available_cols) >= 2:
-        return df[available_cols].corr()
+        # Filter out NaN values
+        clean_df = df_numeric[available_cols].dropna()
+        if len(clean_df) >= 2:
+            return clean_df.corr()
     return pd.DataFrame()
 
 # ============================================
-# VISUALIZATION FUNCTIONS - PHASE 5
+# VISUALIZATION FUNCTIONS - PHASE 5 (FIXED)
 # ============================================
 
 def create_sentiment_distribution_chart(df: pd.DataFrame, theme: str = "default") -> plt.Figure:
@@ -555,7 +630,7 @@ def create_sentiment_distribution_chart(df: pd.DataFrame, theme: str = "default"
         total = sum(counts)
         for bar, count in zip(bars, counts):
             height = bar.get_height()
-            percentage = (count / total) * 100
+            percentage = (count / total) * 100 if total > 0 else 0
             ax.text(bar.get_x() + bar.get_width()/2, height/2,
                    f'{percentage:.1f}%', ha='center', va='center',
                    fontweight='bold', fontsize=14, color='white')
@@ -574,8 +649,15 @@ def create_sentiment_distribution_chart(df: pd.DataFrame, theme: str = "default"
     return fig
 
 def create_score_trend_chart(df: pd.DataFrame, theme: str = "default") -> plt.Figure:
-    """Create sentiment score trend chart"""
+    """Create sentiment score trend chart - FIXED"""
     if len(df) < 2:
+        return None
+    
+    # Convert to numeric
+    df_numeric = convert_to_numeric(df)
+    
+    # Check if we have valid numeric data
+    if 'textblob_score' not in df_numeric.columns or df_numeric['textblob_score'].isna().all():
         return None
     
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -597,58 +679,79 @@ def create_score_trend_chart(df: pd.DataFrame, theme: str = "default") -> plt.Fi
     fig.patch.set_facecolor(bg_color)
     ax.set_facecolor(bg_color)
     
+    # Ensure id is numeric and sort
+    df_numeric = df_numeric.sort_values('id')
+    
     # Plot TextBlob scores
-    ax.plot(df['id'], df['textblob_score'], 
-            label='TextBlob Score', marker='o', linewidth=2.5,
-            color=line_color_tb, markersize=8, alpha=0.8)
+    valid_tb_mask = df_numeric['textblob_score'].notna()
+    if valid_tb_mask.any():
+        ax.plot(df_numeric.loc[valid_tb_mask, 'id'], 
+                df_numeric.loc[valid_tb_mask, 'textblob_score'], 
+                label='TextBlob Score', marker='o', linewidth=2.5,
+                color=line_color_tb, markersize=8, alpha=0.8)
     
     # Plot VADER scores if available
-    if nltk_available and 'vader_score' in df.columns:
-        ax.plot(df['id'], df['vader_score'], 
-                label='VADER Score', marker='s', linewidth=2.5,
-                color=line_color_vader, markersize=8, alpha=0.8)
+    if nltk_available and 'vader_score' in df_numeric.columns:
+        valid_vader_mask = df_numeric['vader_score'].notna()
+        if valid_vader_mask.any():
+            ax.plot(df_numeric.loc[valid_vader_mask, 'id'], 
+                    df_numeric.loc[valid_vader_mask, 'vader_score'], 
+                    label='VADER Score', marker='s', linewidth=2.5,
+                    color=line_color_vader, markersize=8, alpha=0.8)
     
     # Add zero line
     ax.axhline(y=0, color='gray', linestyle='--', alpha=0.5, linewidth=1)
     
-    # Add confidence bands for TextBlob
-    if 'textblob_score' in df.columns:
-        mean_score = df['textblob_score'].mean()
-        std_score = df['textblob_score'].std()
-        ax.fill_between(df['id'], 
-                       mean_score - std_score, 
-                       mean_score + std_score, 
-                       alpha=0.2, color=line_color_tb,
-                       label='±1 Std Dev')
+    # Add confidence bands for TextBlob - FIXED
+    if 'textblob_score' in df_numeric.columns and valid_tb_mask.any():
+        mean_score = df_numeric.loc[valid_tb_mask, 'textblob_score'].mean()
+        std_score = df_numeric.loc[valid_tb_mask, 'textblob_score'].std()
+        
+        # Only add confidence band if we have valid data
+        if not np.isnan(mean_score) and not np.isnan(std_score):
+            # Use numeric indexing for x-axis
+            x_vals = df_numeric.loc[valid_tb_mask, 'id'].values
+            if len(x_vals) > 0:
+                ax.fill_between(x_vals,
+                              mean_score - std_score, 
+                              mean_score + std_score, 
+                              alpha=0.2, color=line_color_tb,
+                              label='±1 Std Dev')
     
     ax.set_title('Sentiment Score Trend Over Time', fontsize=16, fontweight='bold', color=text_color, pad=20)
     ax.set_xlabel('Analysis ID', fontsize=12, fontweight='bold', color=text_color)
     ax.set_ylabel('Sentiment Score', fontsize=12, fontweight='bold', color=text_color)
-    ax.legend(facecolor=bg_color, edgecolor=text_color)
+    
+    # Only add legend if we have data
+    if ax.has_data():
+        ax.legend(facecolor=bg_color, edgecolor=text_color)
+    
     ax.grid(True, alpha=0.3, color=text_color)
     ax.tick_params(colors=text_color)
     
     # Set y-axis limits
     ax.set_ylim([-1.1, 1.1])
     
-    # Add annotations for extremes
-    if 'textblob_score' in df.columns:
-        max_idx = df['textblob_score'].idxmax()
-        min_idx = df['textblob_score'].idxmin()
-        
-        if pd.notna(max_idx):
-            ax.annotate(f"Max: {df.loc[max_idx, 'textblob_score']:.2f}",
-                       xy=(df.loc[max_idx, 'id'], df.loc[max_idx, 'textblob_score']),
-                       xytext=(0, 20), textcoords='offset points',
-                       ha='center', fontweight='bold',
-                       arrowprops=dict(arrowstyle='->', color=text_color))
-        
-        if pd.notna(min_idx):
-            ax.annotate(f"Min: {df.loc[min_idx, 'textblob_score']:.2f}",
-                       xy=(df.loc[min_idx, 'id'], df.loc[min_idx, 'textblob_score']),
-                       xytext=(0, -25), textcoords='offset points',
-                       ha='center', fontweight='bold',
-                       arrowprops=dict(arrowstyle='->', color=text_color))
+    # Add annotations for extremes - FIXED
+    if 'textblob_score' in df_numeric.columns and valid_tb_mask.any():
+        tb_scores = df_numeric.loc[valid_tb_mask, 'textblob_score']
+        if len(tb_scores) > 0:
+            max_idx = tb_scores.idxmax()
+            min_idx = tb_scores.idxmin()
+            
+            if pd.notna(max_idx):
+                ax.annotate(f"Max: {tb_scores.loc[max_idx]:.2f}",
+                           xy=(df_numeric.loc[max_idx, 'id'], tb_scores.loc[max_idx]),
+                           xytext=(0, 20), textcoords='offset points',
+                           ha='center', fontweight='bold',
+                           arrowprops=dict(arrowstyle='->', color=text_color))
+            
+            if pd.notna(min_idx):
+                ax.annotate(f"Min: {tb_scores.loc[min_idx]:.2f}",
+                           xy=(df_numeric.loc[min_idx, 'id'], tb_scores.loc[min_idx]),
+                           xytext=(0, -25), textcoords='offset points',
+                           ha='center', fontweight='bold',
+                           arrowprops=dict(arrowstyle='->', color=text_color))
     
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -657,8 +760,18 @@ def create_score_trend_chart(df: pd.DataFrame, theme: str = "default") -> plt.Fi
     return fig
 
 def create_comparison_scatter(df: pd.DataFrame, theme: str = "default") -> plt.Figure:
-    """Create TextBlob vs VADER comparison scatter plot"""
+    """Create TextBlob vs VADER comparison scatter plot - FIXED"""
     if len(df) < 2 or 'vader_score' not in df.columns:
+        return None
+    
+    # Convert to numeric
+    df_numeric = convert_to_numeric(df)
+    
+    # Filter out NaN values
+    valid_mask = df_numeric['textblob_score'].notna() & df_numeric['vader_score'].notna()
+    valid_df = df_numeric[valid_mask]
+    
+    if len(valid_df) < 2:
         return None
     
     fig, ax = plt.subplots(figsize=(10, 8))
@@ -679,9 +792,11 @@ def create_comparison_scatter(df: pd.DataFrame, theme: str = "default") -> plt.F
     fig.patch.set_facecolor(bg_color)
     ax.set_facecolor(bg_color)
     
-    # Create scatter plot
-    scatter = ax.scatter(df['textblob_score'], df['vader_score'],
-                        c=df['textblob_score'], cmap='RdYlGn',
+    # Create scatter plot with valid numeric data
+    scatter = ax.scatter(valid_df['textblob_score'].astype(float), 
+                        valid_df['vader_score'].astype(float),
+                        c=valid_df['textblob_score'].astype(float), 
+                        cmap='RdYlGn',
                         alpha=0.7, s=150, edgecolors='white', linewidth=1)
     
     # Add perfect agreement line
@@ -952,16 +1067,16 @@ def render_live_analysis():
                             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                             'tweet': tweet,
                             'tweet_short': (tweet[:60] + '...') if len(tweet) > 60 else tweet,
-                            'textblob_score': tb_result['score'],
+                            'textblob_score': float(tb_result['score']),
                             'textblob_sentiment': tb_result['sentiment'],
-                            'textblob_subjectivity': tb_result.get('subjectivity', 0.0),
-                            'vader_score': vader_result['score'],
+                            'textblob_subjectivity': float(tb_result.get('subjectivity', 0.0)),
+                            'vader_score': float(vader_result['score']),
                             'vader_sentiment': vader_result['sentiment'],
-                            'vader_positive': vader_result.get('positive', 0.0),
-                            'vader_negative': vader_result.get('negative', 0.0),
-                            'vader_neutral': vader_result.get('neutral', 0.0),
-                            'word_count': text_stats['word_count'],
-                            'char_count': text_stats['char_count'],
+                            'vader_positive': float(vader_result.get('positive', 0.0)),
+                            'vader_negative': float(vader_result.get('negative', 0.0)),
+                            'vader_neutral': float(vader_result.get('neutral', 0.0)),
+                            'word_count': int(text_stats['word_count']),
+                            'char_count': int(text_stats['char_count']),
                             'analysis_time': time.time()
                         }])
                         
@@ -1117,6 +1232,9 @@ def render_history_dashboard(chart_style: str):
         
         return
     
+    # Convert to numeric for calculations
+    df_numeric = convert_to_numeric(df)
+    
     # PHASE 4: Advanced Metrics
     st.markdown("### 📈 Advanced Analytics Summary")
     
@@ -1137,10 +1255,11 @@ def render_history_dashboard(chart_style: str):
         """, unsafe_allow_html=True)
     
     with metric_cols[1]:
+        avg_score = metrics.get('tb_mean', 0)
         st.markdown(f"""
         <div class='metric-card'>
             <h4>Average Score</h4>
-            <div class='metric-value'>{metrics.get('tb_mean', 0):.3f}</div>
+            <div class='metric-value'>{avg_score:.3f}</div>
             <p style='color: #666; font-size: 0.9em;'>
                 📊 Range: {metrics.get('tb_min', 0):.2f} to {metrics.get('tb_max', 0):.2f}
             </p>
@@ -1161,20 +1280,22 @@ def render_history_dashboard(chart_style: str):
     
     with metric_cols[3]:
         if nltk_available and 'vader_mean' in metrics:
+            vader_avg = metrics.get('vader_mean', 0)
             st.markdown(f"""
             <div class='metric-card'>
                 <h4>VADER Average</h4>
-                <div class='metric-value'>{metrics.get('vader_mean', 0):.3f}</div>
+                <div class='metric-value'>{vader_avg:.3f}</div>
                 <p style='color: #666; font-size: 0.9em;'>
                     🤝 Agreement: {metrics.get('agreement_rate', 0):.1f}%
                 </p>
             </div>
             """, unsafe_allow_html=True)
         else:
+            consistency = 100 - (metrics.get('tb_std', 0) * 100)
             st.markdown(f"""
             <div class='metric-card'>
                 <h4>Data Consistency</h4>
-                <div class='metric-value'>{100 - metrics.get('tb_std', 0)*100:.1f}%</div>
+                <div class='metric-value'>{consistency:.1f}%</div>
                 <p style='color: #666; font-size: 0.9em;'>
                     📐 Std Dev: {metrics.get('tb_std', 0):.3f}
                 </p>
@@ -1193,33 +1314,41 @@ def render_history_dashboard(chart_style: str):
             if fig1:
                 st.pyplot(fig1)
                 plt.close(fig1)
+            else:
+                st.info("No sentiment data available for distribution chart.")
         
         with tab2:
-            fig2 = create_score_trend_chart(df, st.session_state.chart_theme)
+            fig2 = create_score_trend_chart(df_numeric, st.session_state.chart_theme)
             if fig2:
                 st.pyplot(fig2)
                 plt.close(fig2)
+            else:
+                st.info("Need at least 2 analyses with numeric scores for trend chart.")
         
         with tab3:
-            fig3 = create_comparison_scatter(df, st.session_state.chart_theme)
+            fig3 = create_comparison_scatter(df_numeric, st.session_state.chart_theme)
             if fig3:
                 st.pyplot(fig3)
                 plt.close(fig3)
+            else:
+                st.info("Need at least 2 analyses with both TextBlob and VADER scores for comparison.")
     
     else:
         # Show single chart based on selection
         if chart_style == "Bar Chart":
             fig = create_sentiment_distribution_chart(df, st.session_state.chart_theme)
         elif chart_style == "Line Chart":
-            fig = create_score_trend_chart(df, st.session_state.chart_theme)
+            fig = create_score_trend_chart(df_numeric, st.session_state.chart_theme)
         elif chart_style == "Scatter Plot":
-            fig = create_comparison_scatter(df, st.session_state.chart_theme)
+            fig = create_comparison_scatter(df_numeric, st.session_state.chart_theme)
         else:
             fig = create_sentiment_distribution_chart(df, st.session_state.chart_theme)
         
         if fig:
             st.pyplot(fig)
             plt.close(fig)
+        else:
+            st.info(f"Not enough data for {chart_style}. Analyze more tweets first.")
     
     # Recent Analyses Table
     st.markdown("### 📋 Recent Analyses")
@@ -1293,6 +1422,9 @@ def render_advanced_analytics():
         
         return
     
+    # Convert to numeric
+    df_numeric = convert_to_numeric(df)
+    
     # Calculate advanced metrics
     metrics = calculate_advanced_metrics(df)
     
@@ -1305,7 +1437,12 @@ def render_advanced_analytics():
         st.markdown("#### Central Tendency")
         st.metric("Mean Score", f"{metrics.get('tb_mean', 0):.3f}")
         st.metric("Median Score", f"{metrics.get('tb_median', 0):.3f}")
-        st.metric("Mode Score", f"{df['textblob_score'].mode().iloc[0] if not df['textblob_score'].mode().empty else 0:.3f}")
+        
+        # Calculate mode safely
+        if 'textblob_score' in df_numeric.columns:
+            mode_series = df_numeric['textblob_score'].dropna().mode()
+            mode_value = mode_series.iloc[0] if not mode_series.empty else 0.0
+            st.metric("Mode Score", f"{mode_value:.3f}")
     
     with stat_cols[1]:
         st.markdown("#### Dispersion")
@@ -1319,158 +1456,6 @@ def render_advanced_analytics():
         st.metric("25th Percentile", f"{metrics.get('tb_q25', 0):.3f}")
         st.metric("75th Percentile", f"{metrics.get('tb_q75', 0):.3f}")
         st.metric("IQR", f"{metrics.get('tb_iqr', 0):.3f}")
-    
-    # Distribution Analysis
-    st.markdown("### 📈 Distribution Analysis")
-    
-    dist_col1, dist_col2 = st.columns(2)
-    
-    with dist_col1:
-        # Histogram with KDE
-        fig1, ax1 = plt.subplots(figsize=(10, 6))
-        
-        if st.session_state.chart_theme == "dark":
-            plt.style.use('dark_background')
-            hist_color = '#3B82F6'
-            kde_color = '#EF4444'
-            bg_color = '#1F2937'
-            text_color = 'white'
-        else:
-            hist_color = '#60A5FA'
-            kde_color = '#DC2626'
-            bg_color = 'white'
-            text_color = 'black'
-        
-        fig1.patch.set_facecolor(bg_color)
-        ax1.set_facecolor(bg_color)
-        
-        # Plot histogram
-        scores = df['textblob_score'].values
-        ax1.hist(scores, bins=20, alpha=0.7, color=hist_color, 
-                edgecolor='white', density=True, label='Histogram')
-        
-        # Plot KDE
-        from scipy.stats import gaussian_kde
-        kde = gaussian_kde(scores)
-        x_range = np.linspace(min(scores), max(scores), 1000)
-        ax1.plot(x_range, kde(x_range), color=kde_color, linewidth=3, label='KDE')
-        
-        # Add normal distribution for comparison
-        from scipy.stats import norm
-        mu, sigma = np.mean(scores), np.std(scores)
-        normal_pdf = norm.pdf(x_range, mu, sigma)
-        ax1.plot(x_range, normal_pdf, '--', color='green', alpha=0.7, linewidth=2, label='Normal Dist')
-        
-        ax1.set_title('Score Distribution with KDE', fontsize=14, fontweight='bold', color=text_color)
-        ax1.set_xlabel('Sentiment Score', fontsize=12, color=text_color)
-        ax1.set_ylabel('Density', fontsize=12, color=text_color)
-        ax1.legend(facecolor=bg_color, edgecolor=text_color)
-        ax1.grid(alpha=0.3, color=text_color)
-        ax1.tick_params(colors=text_color)
-        
-        st.pyplot(fig1)
-        plt.close(fig1)
-    
-    with dist_col2:
-        # Box plot
-        fig2, ax2 = plt.subplots(figsize=(10, 6))
-        
-        if st.session_state.chart_theme == "dark":
-            box_color = '#8B5CF6'
-            median_color = '#10B981'
-            bg_color = '#1F2937'
-            text_color = 'white'
-        else:
-            box_color = '#7C3AED'
-            median_color = '#059669'
-            bg_color = 'white'
-            text_color = 'black'
-        
-        fig2.patch.set_facecolor(bg_color)
-        ax2.set_facecolor(bg_color)
-        
-        # Create box plot
-        box_data = [df['textblob_score'].values]
-        if nltk_available and 'vader_score' in df.columns:
-            box_data.append(df['vader_score'].values)
-        
-        bp = ax2.boxplot(box_data, patch_artist=True, 
-                        labels=['TextBlob', 'VADER'][:len(box_data)])
-        
-        # Style the box plot
-        for box in bp['boxes']:
-            box.set_facecolor(box_color)
-            box.set_alpha(0.7)
-        
-        for median in bp['medians']:
-            median.set_color(median_color)
-            median.set_linewidth(2)
-        
-        for whisker in bp['whiskers']:
-            whisker.set_color(text_color)
-            whisker.set_linewidth(1.5)
-        
-        for cap in bp['caps']:
-            cap.set_color(text_color)
-            cap.set_linewidth(1.5)
-        
-        ax2.set_title('Score Distribution (Box Plot)', fontsize=14, fontweight='bold', color=text_color)
-        ax2.set_ylabel('Sentiment Score', fontsize=12, color=text_color)
-        ax2.grid(alpha=0.3, color=text_color, axis='y')
-        ax2.tick_params(colors=text_color)
-        
-        st.pyplot(fig2)
-        plt.close(fig2)
-    
-    # Correlation Analysis
-    st.markdown("### 🔗 Correlation Analysis")
-    
-    corr_matrix = generate_correlation_matrix(df)
-    
-    if not corr_matrix.empty:
-        fig3, ax3 = plt.subplots(figsize=(10, 8))
-        
-        if st.session_state.chart_theme == "dark":
-            cmap = 'coolwarm'
-            bg_color = '#1F2937'
-            text_color = 'white'
-        else:
-            cmap = 'RdYlBu'
-            bg_color = 'white'
-            text_color = 'black'
-        
-        fig3.patch.set_facecolor(bg_color)
-        ax3.set_facecolor(bg_color)
-        
-        # Create heatmap
-        im = ax3.imshow(corr_matrix.values, cmap=cmap, vmin=-1, vmax=1)
-        
-        # Add annotations
-        for i in range(len(corr_matrix.columns)):
-            for j in range(len(corr_matrix.columns)):
-                value = corr_matrix.iloc[i, j]
-                color = 'white' if abs(value) > 0.5 else 'black'
-                ax3.text(j, i, f'{value:.2f}', 
-                        ha='center', va='center', 
-                        color=color, fontweight='bold', fontsize=11)
-        
-        # Set labels
-        ax3.set_xticks(np.arange(len(corr_matrix.columns)))
-        ax3.set_yticks(np.arange(len(corr_matrix.columns)))
-        ax3.set_xticklabels(corr_matrix.columns, rotation=45, ha='right', color=text_color)
-        ax3.set_yticklabels(corr_matrix.columns, color=text_color)
-        
-        ax3.set_title('Correlation Matrix', fontsize=16, fontweight='bold', 
-                     color=text_color, pad=20)
-        
-        # Add colorbar
-        cbar = ax3.figure.colorbar(im, ax=ax3)
-        cbar.ax.tick_params(colors=text_color)
-        cbar.set_label('Correlation Coefficient', color=text_color, fontweight='bold')
-        
-        plt.tight_layout()
-        st.pyplot(fig3)
-        plt.close(fig3)
 
 # ============================================
 # FIXED METHOD COMPARISON
@@ -1507,8 +1492,11 @@ def render_method_comparison():
         
         return
     
+    # Convert to numeric
+    df_numeric = convert_to_numeric(df)
+    
     # Filter only analyses with both methods
-    comparison_df = df[(df['textblob_sentiment'] != 'N/A') & (df['vader_sentiment'] != 'N/A')]
+    comparison_df = df_numeric[(df['textblob_sentiment'] != 'N/A') & (df['vader_sentiment'] != 'N/A')]
     
     if comparison_df.empty:
         st.error("No analyses with both TextBlob and VADER results found!")
@@ -1538,71 +1526,6 @@ def render_method_comparison():
     
     with agree_col4:
         st.metric("Disagreements", disagreements)
-    
-    # Agreement visualization
-    fig1, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    
-    # Set theme
-    if st.session_state.chart_theme == "dark":
-        plt.style.use('dark_background')
-        agree_color = '#10B981'
-        disagree_color = '#EF4444'
-        bar_colors = ['#3B82F6', '#8B5CF6']
-        bg_color = '#1F2937'
-        text_color = 'white'
-    else:
-        agree_color = '#059669'
-        disagree_color = '#DC2626'
-        bar_colors = ['#2563EB', '#7C3AED']
-        bg_color = 'white'
-        text_color = 'black'
-    
-    fig1.patch.set_facecolor(bg_color)
-    ax1.set_facecolor(bg_color)
-    ax2.set_facecolor(bg_color)
-    
-    # Pie chart - Agreement distribution
-    sizes = [agreements, disagreements]
-    labels = ['Agree', 'Disagree']
-    colors = [agree_color, disagree_color]
-    explode = (0.05, 0.05)
-    
-    ax1.pie(sizes, explode=explode, labels=labels, colors=colors,
-           autopct='%1.1f%%', startangle=90, shadow=True,
-           textprops={'color': text_color, 'fontweight': 'bold'})
-    ax1.set_title('Method Agreement Distribution', fontsize=14, 
-                 fontweight='bold', color=text_color)
-    
-    # Bar chart - Agreement by sentiment
-    sentiment_agreement = {}
-    for sentiment in ['positive', 'negative', 'neutral']:
-        mask = (comparison_df['textblob_sentiment'] == sentiment) & \
-               (comparison_df['vader_sentiment'] == sentiment)
-        sentiment_agreement[sentiment] = mask.sum()
-    
-    sentiments = list(sentiment_agreement.keys())
-    counts = list(sentiment_agreement.values())
-    
-    bars = ax2.bar(sentiments, counts, color=bar_colors[:len(sentiments)], 
-                  edgecolor='white', linewidth=2)
-    
-    # Add value labels
-    for bar, count in zip(bars, counts):
-        height = bar.get_height()
-        ax2.text(bar.get_x() + bar.get_width()/2, height + 0.5,
-                str(count), ha='center', va='bottom',
-                fontweight='bold', fontsize=12, color=text_color)
-    
-    ax2.set_title('Agreements by Sentiment', fontsize=14, 
-                 fontweight='bold', color=text_color)
-    ax2.set_xlabel('Sentiment', fontsize=12, color=text_color)
-    ax2.set_ylabel('Agreement Count', fontsize=12, color=text_color)
-    ax2.grid(axis='y', alpha=0.3, color=text_color)
-    ax2.tick_params(colors=text_color)
-    
-    plt.tight_layout()
-    st.pyplot(fig1)
-    plt.close(fig1)
 
 # ============================================
 # FIXED DATA EXPORT
@@ -1644,17 +1567,16 @@ def render_data_export():
         st.metric("Total Records", len(df))
     
     with summary_cols[1]:
-        st.metric("Time Range", 
-                 f"{df['timestamp'].min()[:10] if not df.empty else 'N/A'} to "
-                 f"{df['timestamp'].max()[:10] if not df.empty else 'N/A'}")
+        time_range = f"{df['timestamp'].min()[:10] if not df.empty else 'N/A'} to {df['timestamp'].max()[:10] if not df.empty else 'N/A'}"
+        st.metric("Time Range", time_range)
     
     with summary_cols[2]:
-        st.metric("File Size (approx)", 
-                 f"{sys.getsizeof(df) / 1024:.1f} KB")
+        file_size = sys.getsizeof(df) / 1024
+        st.metric("File Size (approx)", f"{file_size:.1f} KB")
     
     with summary_cols[3]:
-        st.metric("Unique Tweets", 
-                 df['tweet'].nunique() if 'tweet' in df.columns else 0)
+        unique_tweets = df['tweet'].nunique() if 'tweet' in df.columns else 0
+        st.metric("Unique Tweets", unique_tweets)
     
     # Data Preview
     st.markdown("### 👁️ Data Preview")
@@ -1743,6 +1665,7 @@ def render_data_export():
         # Excel Export
         if "Excel" in export_format:
             try:
+                import openpyxl
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     export_df.to_excel(writer, index=False, sheet_name='Sentiment Analysis')
@@ -1753,7 +1676,7 @@ def render_data_export():
                     file_name=f"sentiment_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
-                    help="Download data as Excel file (requires openpyxl)"
+                    help="Download data as Excel file"
                 )
             except ImportError:
                 st.error("Excel export requires openpyxl. Install with: `pip install openpyxl`")
@@ -1769,12 +1692,14 @@ def render_data_export():
     with stat_cols[1]:
         if 'textblob_sentiment' in export_df.columns:
             sentiment_dist = export_df['textblob_sentiment'].value_counts()
-            st.metric("Most Common Sentiment", 
-                     sentiment_dist.index[0] if not sentiment_dist.empty else "N/A")
+            most_common = sentiment_dist.index[0] if not sentiment_dist.empty else "N/A"
+            st.metric("Most Common Sentiment", most_common)
     
     with stat_cols[2]:
         if 'textblob_score' in export_df.columns:
-            avg_score = export_df['textblob_score'].mean()
+            # Convert to numeric for calculation
+            scores = pd.to_numeric(export_df['textblob_score'], errors='coerce')
+            avg_score = scores.mean()
             st.metric("Average Score", f"{avg_score:.3f}")
 
 # ============================================
